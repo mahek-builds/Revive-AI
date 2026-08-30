@@ -15,8 +15,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
 // Keep the same test key pair in both the backend and the browser checkout config.
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_TUpZeEwAn92HGh';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '6AO4KkDpuaCBokH48FC02nMU';
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID 
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET 
 
 const razorpay = new Razorpay({
   key_id: RAZORPAY_KEY_ID,
