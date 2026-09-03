@@ -1,5 +1,5 @@
 -- Migration 001: Initial Schema Setup
--- Creating 7 core tables for RecoverAI
+-- Creating 7 core tables for reviveai
 
 CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY,

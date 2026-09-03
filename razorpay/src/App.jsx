@@ -214,7 +214,7 @@ export default function App() {
                 key: order.key_id,
                 amount: order.amount,
                 currency: order.currency,
-                name: 'recoverAI Platform',
+                name: 'reviveai Platform',
                 description: 'Revenue recovery demo transaction',
                 order_id: order.order_id,
                 prefill: { email: order.customer.email },
@@ -283,7 +283,7 @@ export default function App() {
             <aside>
                 <div className="logo-area">
                     <div className="logo-icon">R</div>
-                    <div className="logo-text">recoverAI</div>
+                    <div className="logo-text">reviveai</div>
                     <span className="logo-badge">PRO</span>
                 </div>
                 <div className="nav-section-title">Overview</div>

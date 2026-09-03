@@ -25,7 +25,7 @@ from db.seed_test_events import seed_test_events
 load_dotenv()
 
 app = FastAPI(
-    title="RecoverAI Platform",
+    title="reviveai Platform",
     description="AI Revenue Recovery Platform for Razorpay",
     version="1.0.0"
 )
@@ -70,7 +70,7 @@ def startup_event():
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
-    return {"status": "online", "system": "RecoverAI Python FastAPI Platform"}
+    return {"status": "online", "system": "reviveai Python FastAPI Platform"}
 
 @app.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request):
@@ -253,8 +253,8 @@ def create_payment_order(payment: PaymentOrderRequest):
         order = client.order.create({
             "amount": int(round(payment.amount * 100)),
             "currency": payment.currency.upper(),
-            "receipt": f"recoverai_{uuid.uuid4().hex[:16]}",
-            "notes": {"source": "recoverai_dashboard"}
+            "receipt": f"reviveai_{uuid.uuid4().hex[:16]}",
+            "notes": {"source": "reviveai_dashboard"}
         })
         return {
             "order_id": order["id"],
@@ -455,4 +455,4 @@ if FRONTEND_DIR.exists():
         index_page = FRONTEND_DIR / "pages" / "index.html"
         if index_page.exists():
             return FileResponse(index_page)
-        return {"message": "RecoverAI Python Platform running."}
+        return {"message": "reviveai Python Platform running."}

@@ -21,7 +21,7 @@ def get_formatted_template(template_key: str, variables: dict) -> str:
     """Retrieves a pre-approved message template formatted with safe variables."""
     template = MESSAGE_TEMPLATES.get(template_key)
     if not template:
-        return "Standard payment reminder from RecoverAI."
+        return "Standard payment reminder from reviveai."
 
     text = template.get("body", "")
     for key, value in variables.items():

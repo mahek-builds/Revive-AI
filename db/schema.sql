@@ -1,4 +1,4 @@
--- RecoverAI Database Schema (7 Core Tables)
+-- reviveai Database Schema (7 Core Tables)
 
 CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY,

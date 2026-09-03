@@ -1,7 +1,7 @@
 {
-  "name": "recoverai",
+  "name": "reviveai",
   "version": "1.0.0",
-  "description": "RecoverAI - AI Revenue Recovery Agent platform for Razorpay",
+  "description": "reviveai - AI Revenue Recovery Agent platform for Razorpay",
   "main": "backend/server.js",
   "scripts": {
     "start": ".venv\\Scripts\\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 5000",

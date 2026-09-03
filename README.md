@@ -1,11 +1,11 @@
-# RecoverAI
+# reviveai
 
 AI Revenue Recovery Agent platform for Razorpay powered by a **Python FastAPI** backend.
 
 ## Directory Structure
 
 ```text
-recoverAI/
+reviveai/
 ├── README.md                           # Setup + how to run
 ├── .env.example                        # Shared environment template
 ├── .env                                # Local env (gitignored)

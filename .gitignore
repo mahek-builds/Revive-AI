@@ -12,7 +12,7 @@ venv/
 
 # SQLite Database file
 *.db
-recoverai.db
+reviveai.db
 
 # Node.js dependencies
 node_modules/

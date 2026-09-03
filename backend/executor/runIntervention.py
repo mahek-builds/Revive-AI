@@ -21,7 +21,7 @@ def execute_intervention(intervention: dict) -> dict:
         if action_type == "send_payment_link":
             cust_obj = {"name": "Customer", "email": customer_email, "contact": "+919999999999"}
             try:
-                result = create_payment_link(amount=amount, currency="INR", description="Revenue Recovery via recoverAI", customer=cust_obj)
+                result = create_payment_link(amount=amount, currency="INR", description="Revenue Recovery via reviveai", customer=cust_obj)
             except Exception as rzp_err:
                 # If Razorpay test API credentials are dummy or unauthenticated, generate a simulated recovery link
                 result = {"short_url": f"https://rzp.io/i/rec_{razorpay_entity_id[:8]}", "id": f"plink_{razorpay_entity_id[:8]}", "note": str(rzp_err)}
