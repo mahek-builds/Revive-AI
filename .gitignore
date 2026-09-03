@@ -1,1 +1,24 @@
+# Python virtual environments & bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# Environment files with secret keys
 .env
+
+# SQLite Database file
+*.db
+recoverai.db
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+
+# IDE & System files
+.vscode/
+.idea/
+.DS_Store
