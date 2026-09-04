@@ -11,7 +11,9 @@ def parse_webhook_payload(payload: dict) -> dict:
 
     # Extract primary entity object from payload (payment / order / invoice / payment_link / subscription)
     entity = {}
-    if "payment" in payload_body:
+    if event_type.startswith("payment_link.") and "payment_link" in payload_body:
+        entity = payload_body["payment_link"].get("entity", {})
+    elif "payment" in payload_body:
         entity = payload_body["payment"].get("entity", {})
     elif "order" in payload_body:
         entity = payload_body["order"].get("entity", {})

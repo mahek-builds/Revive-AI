@@ -23,6 +23,11 @@ export const generatePaymentLink = async (caseId: string) => {
   return data;
 };
 
+export const syncPaymentLink = async (caseId: string) => {
+  const { data } = await api.post(`/recovery-cases/${caseId}/sync-payment-link`);
+  return data;
+};
+
 export const getRecoveryActions = async (caseId?: string) => {
   const params = new URLSearchParams({ limit: '100' });
   if (caseId) params.set('recovery_case_id', caseId);

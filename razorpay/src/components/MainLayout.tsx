@@ -27,7 +27,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center">
             <Bot className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="font-bold text-base tracking-tight">reviveai</span>
+          <span className="font-bold text-base tracking-tight">RecoverAI</span>
         </div>
 
         {/* Nav */}

@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Brain, Link2, Loader2 } from 'lucide-react'
-import { getRecoveryCase, runAIDecision, generatePaymentLink, getRecoveryActions } from '@/services/recovery.api'
+import { getRecoveryCase, runAIDecision, generatePaymentLink, syncPaymentLink, getRecoveryActions } from '@/services/recovery.api'
 import { getAuditLogs } from '@/services/dashboard.api'
 
 export default function CaseDetailPage() {
@@ -28,6 +28,18 @@ export default function CaseDetailPage() {
     mutationFn: () => generatePaymentLink(id),
     onSuccess: d => { setPaymentLink(d.payment_link_url ?? d.url ?? d.short_url ?? ''); setMsg('') },
     onError: (e: any) => setMsg('Error: ' + (e.response?.data?.detail?.error?.message ?? e.message)),
+  })
+
+  const syncLinkMut = useMutation({
+    mutationFn: () => syncPaymentLink(id),
+    onSuccess: d => {
+      if (d.status === 'recovered') {
+        qc.invalidateQueries({ queryKey: ['case', id] })
+        qc.invalidateQueries({ queryKey: ['cases'] })
+      }
+      setMsg(d.status === 'recovered' ? 'Payment confirmed and case recovered.' : `Payment status: ${d.status}`)
+    },
+    onError: (e: any) => setMsg('Error checking payment: ' + (e.response?.data?.detail?.error?.message ?? e.message)),
   })
 
   if (isLoading || !c) return (
@@ -96,6 +108,13 @@ export default function CaseDetailPage() {
           >
             {linkMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
             Generate Payment Link
+          </button>
+          <button
+            onClick={() => syncLinkMut.mutate()}
+            disabled={syncLinkMut.isPending}
+            className="border rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+          >
+            {syncLinkMut.isPending ? 'Checking…' : 'Check Payment Status'}
           </button>
         </div>
 

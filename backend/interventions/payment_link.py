@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from backend.config import RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
 from backend.database import get_db_connection
 from backend.audit import log_event
+from backend.recovery_case import mark_recovered
 import razorpay
 
 logger = logging.getLogger(__name__)
@@ -76,3 +77,36 @@ def create_payment_link(
     logger.info("Payment link created: %s", rzp_response.get("short_url"))
     return {"action_id": action_id, "razorpay_link_id": rzp_response.get("id"),
             "short_url": rzp_response.get("short_url"), "status": "created"}
+
+
+def sync_payment_link(recovery_case_id: str) -> dict | None:
+    """Reconcile a case with the latest status reported by Razorpay."""
+    conn = get_db_connection()
+    try:
+        action = conn.execute(
+            """
+            SELECT external_reference
+            FROM recovery_actions
+            WHERE recovery_case_id = ? AND action_type = 'PAYMENT_LINK'
+            ORDER BY executed_at DESC
+            LIMIT 1
+            """,
+            (recovery_case_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not action or not action["external_reference"]:
+        return None
+
+    try:
+        payment_link = _rzp.payment_link.fetch(action["external_reference"])
+    except Exception as exc:
+        raise RuntimeError(f"Unable to fetch Razorpay payment link: {exc}") from exc
+
+    status = payment_link.get("status", "").lower()
+    if status == "paid":
+        amount = float(payment_link.get("amount_paid") or payment_link.get("amount") or 0) / 100
+        return mark_recovered(recovery_case_id, amount, payment_link.get("id", ""))
+
+    return {"case_id": recovery_case_id, "status": status or "unknown"}

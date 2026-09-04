@@ -34,7 +34,15 @@ VALID_TRANSITIONS = {
 def get_case(case_id: str) -> dict | None:
     conn = get_db_connection()
     try:
-        row = conn.execute("SELECT * FROM recovery_cases WHERE id = ?", (case_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT recovery_cases.*, revenue_at_risk.risk_type
+            FROM recovery_cases
+            LEFT JOIN revenue_at_risk ON revenue_at_risk.id = recovery_cases.revenue_risk_id
+            WHERE recovery_cases.id = ?
+            """,
+            (case_id,),
+        ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()

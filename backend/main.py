@@ -21,12 +21,13 @@ from backend.razorpay.client import get_razorpay_client, KEY_ID
 from backend.webhooks.receiver import verify_webhook_signature, is_duplicate_event
 from backend.webhooks.eventParser import parse_webhook_payload
 from backend.metrics.aggregate import compute_aggregate_metrics
+from backend.audit import log_event
 from db.seed_test_events import seed_test_events
 
 load_dotenv()
 
 app = FastAPI(
-    title="reviveai Platform",
+    title="RecoverAI Platform",
     description="AI Revenue Recovery Platform for Razorpay",
     version="1.0.0"
 )
@@ -94,7 +95,7 @@ def startup_event():
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
-    return {"status": "online", "system": "reviveai Python FastAPI Platform"}
+    return {"status": "online", "system": "RecoverAI Python FastAPI Platform"}
 
 @app.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request):
@@ -130,29 +131,53 @@ async def razorpay_webhook(request: Request):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # If it's a successful payment recovery event, update status if existing or insert as recovered
+    # Payment-link callbacks must reconcile against the case that created the link.
+    # The current schema does not contain the legacy webhook columns used here before.
     if parsed_record["status"] == "recovered":
-        cursor.execute("""
-            UPDATE revenue_at_risk SET status = 'recovered' WHERE razorpay_entity_id = ? OR customer_id = ?
-        """, (parsed_record["razorpay_entity_id"], parsed_record["customer_id"]))
-    
-    cursor.execute("""
-        INSERT INTO revenue_at_risk 
-        (id, customer_id, event_type, amount, currency, razorpay_entity_id, error_code, error_description, status) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        parsed_record["id"],
-        parsed_record["customer_id"],
-        parsed_record["event_type"],
-        parsed_record["amount"],
-        parsed_record["currency"],
-        parsed_record["razorpay_entity_id"],
-        parsed_record["error_code"],
-        parsed_record["error_description"],
-        parsed_record["status"]
-    ))
+        link = cursor.execute(
+            """
+            SELECT rc.id, rc.revenue_risk_id, rc.invoice_id
+            FROM recovery_actions ra
+            JOIN recovery_cases rc ON rc.id = ra.recovery_case_id
+            WHERE ra.external_reference = ?
+            ORDER BY ra.executed_at DESC
+            LIMIT 1
+            """,
+            (parsed_record["razorpay_entity_id"],),
+        ).fetchone()
+
+        if link:
+            now = datetime.utcnow().isoformat()
+            cursor.execute(
+                """
+                UPDATE recovery_cases
+                SET status = 'recovered', amount_recovered = ?,
+                    stop_reason = 'PAYMENT_RECEIVED', updated_at = ?
+                WHERE id = ?
+                """,
+                (parsed_record["amount"], now, link["id"]),
+            )
+            if link["revenue_risk_id"]:
+                cursor.execute(
+                    """
+                    UPDATE revenue_at_risk
+                    SET risk_status = 'resolved', resolved_at = ?,
+                        resolution_reason = 'PAYMENT_RECEIVED', updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (now, now, link["revenue_risk_id"]),
+                )
     conn.commit()
     conn.close()
+
+    if parsed_record["status"] == "recovered" and link:
+        log_event(
+            "recovery_case",
+            link["id"],
+            "RECOVERY_COMPLETED",
+            f"Razorpay payment link {parsed_record['razorpay_entity_id']} paid: INR {parsed_record['amount']:,.2f}",
+            {"razorpay_link_id": parsed_record["razorpay_entity_id"]},
+        )
 
     return {"status": "processed", "record": parsed_record}
 
@@ -277,8 +302,8 @@ def create_payment_order(payment: PaymentOrderRequest):
         order = client.order.create({
             "amount": int(round(payment.amount * 100)),
             "currency": payment.currency.upper(),
-            "receipt": f"reviveai_{uuid.uuid4().hex[:16]}",
-            "notes": {"source": "reviveai_dashboard"}
+            "receipt": f"recoverai_{uuid.uuid4().hex[:16]}",
+            "notes": {"source": "recoverai_dashboard"}
         })
         return {
             "order_id": order["id"],
@@ -647,5 +672,5 @@ if FRONTEND_DIR.exists():
         index_page = FRONTEND_DIR / "pages" / "index.html"
         if index_page.exists():
             return FileResponse(index_page)
-        return {"message": "reviveai Python Platform running."}
+        return {"message": "RecoverAI Python Platform running."}
 

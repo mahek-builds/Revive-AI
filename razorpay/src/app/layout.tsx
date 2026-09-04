@@ -7,7 +7,7 @@ import Providers from "@/components/Providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "reviveai | AI Revenue Recovery Platform",
+  title: "RecoverAI | AI Revenue Recovery Platform",
   description: "Detect revenue at risk, decide recovery actions, and execute bounded recovery workflows.",
 };
 

@@ -45,7 +45,7 @@ class Decision(BaseModel):
 
 
 _SYSTEM_PROMPT = """
-You are an AI recovery agent for reviveai, a revenue recovery platform.
+You are an AI recovery agent for RecoverAI, a revenue recovery platform.
 
 Your job is to analyse a revenue-recovery case and decide the best recovery action.
 
@@ -72,6 +72,26 @@ Output schema:
 """
 
 
+def _parse_decision_json(raw: str) -> dict:
+    """Parse a JSON decision, tolerating only truncated closing object braces."""
+    if raw.startswith("```"):
+        raw = raw.split("```", 1)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        missing_braces = raw.count("{") - raw.count("}")
+        if missing_braces > 0 and exc.pos >= len(raw) - 1:
+            try:
+                return json.loads(raw + ("}" * missing_braces))
+            except json.JSONDecodeError:
+                pass
+        raise ValueError(f"LLM returned invalid JSON: {exc}\nRaw: {raw}") from exc
+
+
 def make_recovery_decision(case_context: dict) -> Decision:
     """
     Call Groq LLM with structured case context, validate output, return Decision.
@@ -88,7 +108,8 @@ def make_recovery_decision(case_context: dict) -> Decision:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
-            max_tokens=512,
+            max_tokens=1024,
+            response_format={"type": "json_object"},
         )
     except Exception as exc:
         raise RuntimeError(f"Groq API call failed: {exc}") from exc
@@ -96,16 +117,5 @@ def make_recovery_decision(case_context: dict) -> Decision:
     raw = response.choices[0].message.content.strip()
     logger.debug("LLM raw response: %s", raw)
 
-    # Strip any accidental markdown fences
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM returned invalid JSON: {exc}\nRaw: {raw}") from exc
-
+    data = _parse_decision_json(raw)
     return Decision(**data)

@@ -85,7 +85,7 @@ Extract the customer's intent and any payment-related information. Return ONLY v
   "promised_date": "<YYYY-MM-DD or null>",
   "payment_status": "<brief status description>",
   "requires_escalation": <true|false>,
-  "recommended_action": "<what should reviveai do next?>"
+  "recommended_action": "<what should RecoverAI do next?>"
 }
 Understand Hindi, English, and mixed Hinglish speech naturally.
 """

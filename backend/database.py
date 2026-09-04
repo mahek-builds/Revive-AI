@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "reviveai.db"
+DB_PATH = BASE_DIR / "recoverai.db"
 SCHEMA_PATH = BASE_DIR / "db" / "schema.sql"
 
 def get_db_connection():

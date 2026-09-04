@@ -15,7 +15,7 @@ from backend.risk_detection import detect_and_create_risk
 from backend.recovery_case import get_case, build_case_context, mark_recovered
 from backend.ai_decision import make_recovery_decision
 from backend.guardrails import enforce as guardrail_enforce, GuardrailViolation
-from backend.interventions.payment_link import create_payment_link as _create_plink
+from backend.interventions.payment_link import create_payment_link as _create_plink, sync_payment_link as _sync_plink
 from backend.interventions.b2b_chaser import run_b2b_chaser as _run_b2b
 from backend.interventions.voice_recovery import process_voice_audio
 from backend.interventions.promise_handler import (
@@ -252,7 +252,12 @@ def list_risk_events(status: Optional[str] = None, limit: int = Query(50, le=200
 def list_recovery_cases(status: Optional[str] = None, priority: Optional[str] = None, limit: int = Query(50, le=200)):
     conn = get_db_connection()
     try:
-        q = "SELECT * FROM recovery_cases WHERE 1=1"
+        q = """
+            SELECT recovery_cases.*, revenue_at_risk.risk_type
+            FROM recovery_cases
+            LEFT JOIN revenue_at_risk ON revenue_at_risk.id = recovery_cases.revenue_risk_id
+            WHERE 1=1
+        """
         p: list = []
         if status:
             q += " AND status = ?"; p.append(status)
@@ -316,6 +321,18 @@ def create_case_payment_link(case_id: str):
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail={"error": {"code": "RAZORPAY_ERROR", "message": str(exc)}})
     return result
+
+
+@router.post("/recovery-cases/{case_id}/sync-payment-link", dependencies=[Depends(require_api_key)])
+def sync_case_payment_link(case_id: str):
+    """Refresh payment-link status from Razorpay and reconcile a paid case."""
+    if not get_case(case_id):
+        raise HTTPException(status_code=404, detail={"error": {"code": "CASE_NOT_FOUND", "message": f"Recovery case {case_id} not found."}})
+    try:
+        result = _sync_plink(case_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail={"error": {"code": "RAZORPAY_ERROR", "message": str(exc)}})
+    return result or {"case_id": case_id, "status": "no_payment_link"}
 
 
 # ─── Promises ────────────────────────────────────────────────────────────────

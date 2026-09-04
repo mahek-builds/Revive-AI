@@ -32,7 +32,7 @@ const INITIAL_NODES: PipelineNode[] = [
 
 export default function SimulatorPage() {
   const [amount, setAmount]         = useState(1499)
-  const [email, setEmail]           = useState('demo@reviveai.in')
+  const [email, setEmail]           = useState('demo@recoverai.in')
   const [customerName, setCustomerName] = useState('Demo Customer')
   const [statusMsg, setStatusMsg]   = useState('')
   const [isRunning, setIsRunning]   = useState(false)
@@ -180,7 +180,7 @@ export default function SimulatorPage() {
         key: order.key_id,
         amount: order.amount,
         currency: order.currency,
-        name: 'reviveai Platform',
+        name: 'RecoverAI Platform',
         description: `Order: ${order.order_id} (₹${amount})`,
         order_id: order.order_id,
         prefill: { name: order.customer.name, email: order.customer.email, contact: order.customer.contact },

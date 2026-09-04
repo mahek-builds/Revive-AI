@@ -1,5 +1,5 @@
 """
-config.py — centralised environment variable loader for reviveai.
+config.py — centralised environment variable loader for RecoverAI.
 Raises ConfigurationError at import time when mandatory vars are missing.
 """
 import os
@@ -60,6 +60,6 @@ APP_ENV: str = _optional("APP_ENV", "development")
 LOG_LEVEL: str = _optional("LOG_LEVEL", "INFO")
 
 logger.info(
-    "reviveai config loaded — env=%s, llm_model=%s, stt_model=%s",
+    "RecoverAI config loaded — env=%s, llm_model=%s, stt_model=%s",
     APP_ENV, LLM_MODEL, STT_MODEL,
 )

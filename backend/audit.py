@@ -1,5 +1,5 @@
 ﻿"""
-audit.py — central audit-trail writer for reviveai.
+audit.py — central audit-trail writer for RecoverAI.
 Every meaningful state transition, AI decision, and recovery action
 must be recorded through log_event().
 """
