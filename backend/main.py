@@ -1,6 +1,7 @@
 import sys
 import json
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Add project root to sys.path so imports work regardless of working directory
@@ -62,10 +63,33 @@ class SimulateFailureRequest(BaseModel):
     error_code: str = Field(default="BAD_REQUEST_PAYMENT_FAILED")
     error_description: str = Field(default="Payment failed due to insufficient funds in customer account")
 
+# Include Track 03 v2 router
+from backend.routes_v2 import router as v2_router
+app.include_router(v2_router)
+
 @app.on_event("startup")
 def startup_event():
-    """Initializes SQLite database schema on server startup."""
+    """Initializes SQLite database schema on server startup and runs column migrations."""
+    import sqlite3
+    from backend.database import DB_PATH
     init_db()
+    # Add new columns to existing tables if missing (idempotent)
+    migrations = [
+        "ALTER TABLE customers ADD COLUMN external_customer_id TEXT",
+        "ALTER TABLE customers ADD COLUMN company_name TEXT",
+        "ALTER TABLE customers ADD COLUMN customer_type TEXT",
+        "ALTER TABLE customers ADD COLUMN updated_at DATETIME",
+        "ALTER TABLE audit_logs ADD COLUMN metadata TEXT",
+    ]
+    conn = sqlite3.connect(str(DB_PATH))
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass  # Column already exists
+    conn.commit()
+    conn.close()
+
 
 @app.get("/health")
 def health_check():
@@ -276,18 +300,50 @@ def create_payment_order(payment: PaymentOrderRequest):
 
 @app.post("/api/payments/verify")
 def verify_payment(payment: PaymentVerificationRequest):
-    """Verifies the Checkout signature using Razorpay's server-side SDK."""
+    """Verifies the Checkout signature using Razorpay's server-side SDK and records the successful payment."""
     try:
-        get_razorpay_client().utility.verify_payment_signature({
+        client = get_razorpay_client()
+        client.utility.verify_payment_signature({
             "razorpay_order_id": payment.razorpay_order_id,
             "razorpay_payment_id": payment.razorpay_payment_id,
             "razorpay_signature": payment.razorpay_signature,
         })
+        
+        # Fetch dynamic amount from Razorpay API
+        try:
+            rzp_payment = client.payment.fetch(payment.razorpay_payment_id)
+            actual_amount = float(rzp_payment.get("amount", 0)) / 100.0
+            actual_currency = rzp_payment.get("currency", "INR")
+            actual_method = rzp_payment.get("method", "razorpay")
+        except Exception:
+            actual_amount = 0.0
+            actual_currency = "INR"
+            actual_method = "razorpay"
+
+        # Record the successful payment in SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO payments 
+            (id, external_payment_id, amount, currency, status, payment_method, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'captured', ?, ?, ?)
+        """, (payment.razorpay_payment_id, payment.razorpay_order_id, actual_amount, actual_currency, actual_method, now, now))
+        
+        cursor.execute("""
+            INSERT INTO audit_logs (id, entity_type, entity_id, action, details)
+            VALUES (?, 'payment', ?, 'PAYMENT_CAPTURED', ?)
+        """, (f"aud_{uuid.uuid4().hex[:8]}", payment.razorpay_payment_id, f"Razorpay Payment {payment.razorpay_payment_id} captured (â‚¹{actual_amount:,.2f}) for Order {payment.razorpay_order_id}"))
+        
+        conn.commit()
+        conn.close()
+        
         return {"status": "verified", "payment_id": payment.razorpay_payment_id}
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Razorpay payment verification failed"
+            detail=f"Razorpay payment verification failed: {str(e)}"
         )
 
 @app.post("/api/simulate-payment-failure")
@@ -317,14 +373,14 @@ def simulate_payment_failure(req: SimulateFailureRequest):
     cursor.execute("""
         INSERT INTO audit_logs (id, entity_type, entity_id, action, details)
         VALUES (?, 'revenue_at_risk', ?, 'WEBHOOK_INGESTED', ?)
-    """, (f"aud_{uuid.uuid4().hex[:8]}", rar_id, f"Captured payment.failed event for ₹{req.amount:,.2f} ({req.error_code})"))
+    """, (f"aud_{uuid.uuid4().hex[:8]}", rar_id, f"Captured payment.failed event for â‚¹{req.amount:,.2f} ({req.error_code})"))
 
     step1 = {
         "step": 1,
         "name": "Ingestion Agent",
         "status": "completed",
         "title": "Webhook Event Ingested",
-        "details": f"Registered payment.failed event #{rar_id} for ₹{req.amount:,.2f}",
+        "details": f"Registered payment.failed event #{rar_id} for â‚¹{req.amount:,.2f}",
         "entity_id": rar_id
     }
 
@@ -445,6 +501,142 @@ def simulate_customer_recovery(rar_id: str):
 
     return {"status": "success", "message": f"Successfully simulated customer recovery for {rar_id}"}
 
+# ---- New Promise-to-Pay Endpoints ----
+from backend.promiseToPay.checker import check_promise_statuses
+
+@app.get("/api/promise-to-pay/check")
+def promise_to_pay_check():
+    """Runs the promise-to-pay status checker and returns summary."""
+    result = check_promise_statuses()
+    return result
+
+@app.post("/api/promise-to-pay/create")
+def promise_to_pay_create(customer_id: str, promised_date: str, intervention_id: str):
+    """Creates a new promise-to-pay record linked to an intervention.
+
+    Args:
+        customer_id: ID of the customer.
+        promised_date: ISOâ€‘8601 datetime string for promised payment.
+        intervention_id: ID of the related intervention.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    promise_id = f"ppt_{uuid.uuid4().hex[:8]}"
+    cursor.execute(
+        """
+        INSERT INTO promise_to_pay (id, intervention_id, promised_date, status)
+        VALUES (?, ?, ?, 'pending')
+        """,
+        (promise_id, intervention_id, promised_date)
+    )
+    cursor.execute(
+        """
+        INSERT INTO audit_logs (id, entity_type, entity_id, action, details)
+        VALUES (?, 'promise_to_pay', ?, 'CREATED', ?)
+        """,
+        (f"aud_{uuid.uuid4().hex[:8]}", promise_id, f"Created promise for intervention {intervention_id}")
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "created", "promise_id": promise_id}
+
+# ---- B2B Receivables Chaser ----
+@app.post("/api/b2b-chaser/run")
+def run_b2b_chaser():
+    """Scans open revenueâ€‘atâ€‘risk rows older than 7 days, creates a placeholder intervention and linked promiseâ€‘toâ€‘pay.
+    Returns count of promises created.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, customer_id, amount FROM revenue_at_risk
+        WHERE status = 'open' AND created_at < datetime('now', '-7 days')
+        """
+    )
+    rows = cursor.fetchall()
+    created = 0
+    for row in rows:
+        # Create a placeholder intervention (send payment link)
+        interv_id = f"int_{uuid.uuid4().hex[:8]}"
+        cursor.execute(
+            """
+            INSERT INTO interventions (id, revenue_at_risk_id, diagnosis_id, action_type, channel, status)
+            VALUES (?, ?, ?, 'send_payment_link', 'email', 'pending')
+            """,
+            (interv_id, row["id"], None)
+        )
+        # Create a promise to pay, due in 5 days
+        promised_date = (datetime.utcnow() + timedelta(days=5)).isoformat()
+        promise_id = f"ppt_{uuid.uuid4().hex[:8]}"
+        cursor.execute(
+            """
+            INSERT INTO promise_to_pay (id, intervention_id, promised_date, status)
+            VALUES (?, ?, ?, 'pending')
+            """,
+            (promise_id, interv_id, promised_date)
+        )
+        cursor.execute(
+            """
+            INSERT INTO audit_logs (id, entity_type, entity_id, action, details)
+            VALUES (?, 'b2b_chaser', ?, 'PROMISE_CREATED', ?)
+            """,
+            (f"aud_{uuid.uuid4().hex[:8]}", promise_id, f"Created promise for RAR {row['id']}")
+        )
+        created += 1
+    conn.commit()
+    conn.close()
+    return {"created_promises": created}
+
+# ---- Hinglish Voice Recovery (Placeholder) ----
+@app.post("/api/voice-recovery")
+def voice_recovery(transcript: str, customer_id: str):
+    """Accepts a Hinglish transcript, runs LLM classification, and creates a recovery intervention.
+    This is a stub implementation.
+    """
+    from intelligence.diagnosis.llmClassifier import classify_error
+    diag = classify_error("UNKNOWN_ERROR", transcript)
+    from intelligence.decisionEngine.decisionRules import decide_action_for_cause
+    decision = decide_action_for_cause(diag["root_cause"])
+    # Insert a dummy revenue_at_risk entry
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    rar_id = f"rar_{uuid.uuid4().hex[:8]}"
+    cursor.execute(
+        """
+        INSERT INTO revenue_at_risk (id, customer_id, event_type, amount, currency, razorpay_entity_id, error_code, error_description, status)
+        VALUES (?, ?, 'voice_recovery', 0, 'INR', '', 'VOICE_TRANSCRIPT', ?, 'open')
+        """,
+        (rar_id, customer_id, transcript)
+    )
+    # Insert diagnosis
+    diag_id = f"diag_{uuid.uuid4().hex[:8]}"
+    cursor.execute(
+        """
+        INSERT INTO diagnoses (id, revenue_at_risk_id, root_cause, classifier_type, confidence_score, reasoning)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (diag_id, rar_id, diag["root_cause"], diag["classifier_type"], diag["confidence_score"], diag["reasoning"]))
+    # Insert intervention
+    interv_id = f"int_{uuid.uuid4().hex[:8]}"
+    cursor.execute(
+        """
+        INSERT INTO interventions (id, revenue_at_risk_id, diagnosis_id, action_type, channel, status)
+        VALUES (?, ?, ?, ?, ?, 'pending')
+        """,
+        (interv_id, rar_id, diag_id, decision["action"], decision["channel"]))
+    cursor.execute(
+        """
+        INSERT INTO audit_logs (id, entity_type, entity_id, action, details)
+        VALUES (?, 'voice_recovery', ?, 'INTERVENTION_CREATED', ?)
+        """,
+        (f"aud_{uuid.uuid4().hex[:8]}", interv_id, f"Voice recovery created action {decision['action']}")
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "created", "rar_id": rar_id, "intervention_id": interv_id}
+
+# Serve static frontend web application
 
 # Serve static frontend web application
 if FRONTEND_DIR.exists():
@@ -456,3 +648,4 @@ if FRONTEND_DIR.exists():
         if index_page.exists():
             return FileResponse(index_page)
         return {"message": "reviveai Python Platform running."}
+
