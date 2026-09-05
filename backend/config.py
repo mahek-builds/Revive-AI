@@ -33,6 +33,10 @@ def _optional(name: str, default: str = "") -> str:
 RAZORPAY_KEY_ID: str = _require("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET: str = _require("RAZORPAY_KEY_SECRET")
 RAZORPAY_WEBHOOK_SECRET: str = _require("RAZORPAY_WEBHOOK_SECRET")
+RAZORPAY_MOCK_MODE: bool = _optional(
+    "RAZORPAY_MOCK_MODE",
+    "true" if os.getenv("APP_ENV", "development").strip().lower() == "development" else "false",
+).lower() in {"1", "true", "yes"}
 
 # ── LLM (Groq) ───────────────────────────────────────────────────────────────
 LLM_API_KEY: str = _require("LLM_API_KEY")

@@ -4,7 +4,7 @@ payment_link.py — creates a real Razorpay payment link (test mode) for recover
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
-from backend.config import RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
+from backend.config import RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_MOCK_MODE
 from backend.database import get_db_connection
 from backend.audit import log_event
 from backend.recovery_case import mark_recovered
@@ -51,7 +51,16 @@ def create_payment_link(
     try:
         rzp_response = _rzp.payment_link.create(payload)
     except Exception as exc:
-        raise RuntimeError(f"Razorpay payment_link.create failed: {exc}") from exc
+        if not RAZORPAY_MOCK_MODE:
+            raise RuntimeError(f"Razorpay payment_link.create failed: {exc}") from exc
+        link_id = f"plink_mock_{uuid.uuid4().hex[:10]}"
+        rzp_response = {
+            "id": link_id,
+            "short_url": f"http://localhost:5000/demo/payment/{link_id}",
+            "status": "created",
+            "mock": True,
+        }
+        logger.warning("Razorpay unavailable; created mock payment link %s: %s", link_id, exc)
 
     action_id = f"act_{uuid.uuid4().hex[:10]}"
     now = datetime.now(timezone.utc).isoformat()
